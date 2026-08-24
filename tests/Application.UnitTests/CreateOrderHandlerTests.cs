@@ -15,15 +15,59 @@ public class CreateOrderHandlerTests
         var products = new FakeProductRepository();
         products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
         var orders = new FakeOrderRepository();
-        var handler = new CreateOrderHandler(products, orders);
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
 
         var result = await handler.HandleAsync(new CreateOrderRequest(
-            Guid.NewGuid(),
+            "Jane Doe",
+            "jane@example.com",
             new[] { new CreateOrderLineRequest(productId, 3) }));
 
         Assert.Equal("Pending", result.Status);
         Assert.Equal(2, (await products.GetByIdAsync(productId))!.StockQuantity);
         Assert.Single(orders.Orders);
+    }
+
+    [Fact]
+    public async Task HandleAsync_creates_a_new_customer_when_email_is_unknown()
+    {
+        var productId = Guid.NewGuid();
+        var products = new FakeProductRepository();
+        products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
+        var orders = new FakeOrderRepository();
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
+
+        var result = await handler.HandleAsync(new CreateOrderRequest(
+            "Jane Doe",
+            "jane@example.com",
+            new[] { new CreateOrderLineRequest(productId, 1) }));
+
+        var customer = Assert.Single(customers.Customers);
+        Assert.Equal("Jane Doe", customer.Name);
+        Assert.Equal("jane@example.com", customer.Email);
+        Assert.Equal(customer.Id, result.CustomerId);
+    }
+
+    [Fact]
+    public async Task HandleAsync_reuses_existing_customer_with_same_email()
+    {
+        var productId = Guid.NewGuid();
+        var products = new FakeProductRepository();
+        products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
+        var orders = new FakeOrderRepository();
+        var customers = new FakeCustomerRepository();
+        var existingCustomer = new Customer(Guid.NewGuid(), "Jane Doe", "jane@example.com");
+        customers.Seed(existingCustomer);
+        var handler = new CreateOrderHandler(products, orders, customers);
+
+        var result = await handler.HandleAsync(new CreateOrderRequest(
+            "Jane Doe",
+            "jane@example.com",
+            new[] { new CreateOrderLineRequest(productId, 1) }));
+
+        Assert.Single(customers.Customers);
+        Assert.Equal(existingCustomer.Id, result.CustomerId);
     }
 
     [Fact]
@@ -35,10 +79,11 @@ public class CreateOrderHandlerTests
         products.Seed(new Product(plentyId, "Plenty", 5.00m, stockQuantity: 10));
         products.Seed(new Product(scarceId, "Scarce", 5.00m, stockQuantity: 1));
         var orders = new FakeOrderRepository();
-        var handler = new CreateOrderHandler(products, orders);
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
 
         await Assert.ThrowsAsync<InsufficientStockException>(() => handler.HandleAsync(
-            new CreateOrderRequest(Guid.NewGuid(), new[]
+            new CreateOrderRequest("Jane Doe", "jane@example.com", new[]
             {
                 new CreateOrderLineRequest(plentyId, 2),
                 new CreateOrderLineRequest(scarceId, 5),
@@ -59,18 +104,41 @@ public class CreateOrderHandlerTests
         var products = new FakeProductRepository();
         products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
         var orders = new FakeOrderRepository();
-        var handler = new CreateOrderHandler(products, orders);
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
 
         // Two lines for the same product: 3 + 3 = 6, exceeds stock of 5
         // But individually each is within stock (3 <= 5)
         await Assert.ThrowsAsync<InsufficientStockException>(() => handler.HandleAsync(
-            new CreateOrderRequest(Guid.NewGuid(), new[]
+            new CreateOrderRequest("Jane Doe", "jane@example.com", new[]
             {
                 new CreateOrderLineRequest(productId, 3),
                 new CreateOrderLineRequest(productId, 3),
             })));
 
         // Stock should remain unchanged (no partial decrements)
+        Assert.Equal(5, (await products.GetByIdAsync(productId))!.StockQuantity);
+        Assert.Empty(orders.Orders);
+    }
+
+    [Fact]
+    public async Task HandleAsync_rejects_negative_quantity_and_leaves_stock_unchanged()
+    {
+        // Regression test for the critical finding: a negative order-line quantity must not be
+        // allowed to inflate stock via StockQuantity -= quantity.
+        var productId = Guid.NewGuid();
+        var products = new FakeProductRepository();
+        products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
+        var orders = new FakeOrderRepository();
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
+
+        await Assert.ThrowsAsync<InvalidQuantityException>(() => handler.HandleAsync(
+            new CreateOrderRequest("Jane Doe", "jane@example.com", new[]
+            {
+                new CreateOrderLineRequest(productId, -50),
+            })));
+
         Assert.Equal(5, (await products.GetByIdAsync(productId))!.StockQuantity);
         Assert.Empty(orders.Orders);
     }

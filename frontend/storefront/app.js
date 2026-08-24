@@ -44,10 +44,13 @@ async function checkout() {
     quantity,
   }));
 
+  const customerName = document.getElementById("customer-name").value;
+  const customerEmail = document.getElementById("customer-email").value;
+
   const response = await fetch(`${API_BASE}/orders`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ customerId: crypto.randomUUID(), lines }),
+    body: JSON.stringify({ customerName, customerEmail, lines }),
   });
 
   const result = document.getElementById("checkout-result");

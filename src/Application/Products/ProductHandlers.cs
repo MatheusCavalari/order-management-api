@@ -1,11 +1,18 @@
+using System.ComponentModel.DataAnnotations;
 using Application.Dtos;
 using Application.Repositories;
 using Domain;
 
 namespace Application.Products;
 
-public record CreateProductRequest(string Name, decimal Price, int StockQuantity);
-public record UpdateProductRequest(string Name, decimal Price);
+public record CreateProductRequest(
+    [Required, StringLength(200, MinimumLength = 1)] string Name,
+    [Range(0.01, double.MaxValue)] decimal Price,
+    [Range(0, int.MaxValue)] int StockQuantity);
+
+public record UpdateProductRequest(
+    [Required, StringLength(200, MinimumLength = 1)] string Name,
+    [Range(0.01, double.MaxValue)] decimal Price);
 
 public class GetProductsHandler
 {

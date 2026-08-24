@@ -23,6 +23,28 @@ public class ProductTests
     }
 
     [Fact]
+    public void DecreaseStock_throws_when_quantity_is_zero()
+    {
+        var product = new Product(Guid.NewGuid(), "Widget", 10.00m, stockQuantity: 5);
+
+        Assert.Throws<InvalidQuantityException>(() => product.DecreaseStock(0));
+
+        Assert.Equal(5, product.StockQuantity);
+    }
+
+    [Fact]
+    public void DecreaseStock_throws_when_quantity_is_negative()
+    {
+        // Regression test: a negative quantity must not be allowed to flow through
+        // StockQuantity -= quantity, which would otherwise inflate stock.
+        var product = new Product(Guid.NewGuid(), "Widget", 10.00m, stockQuantity: 5);
+
+        Assert.Throws<InvalidQuantityException>(() => product.DecreaseStock(-50));
+
+        Assert.Equal(5, product.StockQuantity);
+    }
+
+    [Fact]
     public void IncreaseStock_adds_quantity_back()
     {
         var product = new Product(Guid.NewGuid(), "Widget", 10.00m, stockQuantity: 2);

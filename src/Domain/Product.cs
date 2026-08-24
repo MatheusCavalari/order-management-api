@@ -21,6 +21,11 @@ public class Product
 
     public void DecreaseStock(int quantity)
     {
+        if (quantity <= 0)
+        {
+            throw new InvalidQuantityException(quantity);
+        }
+
         if (quantity > StockQuantity)
         {
             throw new InsufficientStockException(Id, quantity, StockQuantity);

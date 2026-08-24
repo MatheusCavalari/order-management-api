@@ -22,7 +22,8 @@ public class OrdersEndpointTests : IClassFixture<TestApiFactory>
 
         var response = await client.PostAsJsonAsync("/api/orders", new
         {
-            customerId = Guid.NewGuid(),
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
             lines = new[] { new { productId = Guid.NewGuid(), quantity = 1 } },
         });
 
@@ -46,11 +47,11 @@ public class OrdersEndpointTests : IClassFixture<TestApiFactory>
         }
 
         var client = _factory.CreateClient();
-        var customerId = Guid.NewGuid();
 
         var createResponse = await client.PostAsJsonAsync("/api/orders", new
         {
-            customerId,
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
             lines = new[] { new { productId, quantity = 3 } },
         });
 
@@ -77,11 +78,119 @@ public class OrdersEndpointTests : IClassFixture<TestApiFactory>
         Assert.Equal(productId, fetchedItem.ProductId);
         Assert.Equal(3, fetchedItem.Quantity);
         Assert.Equal(9.99m, fetchedItem.UnitPriceAtOrderTime);
+
+        // Confirm the order is backed by a real, queryable Customer row rather than a dangling GUID.
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var customer = await verifyDb.Customers.FindAsync(order.CustomerId);
+        Assert.NotNull(customer);
+        Assert.Equal("Jane Doe", customer!.Name);
+        Assert.Equal("jane@example.com", customer.Email);
+    }
+
+    [Fact]
+    public async Task Create_order_with_negative_quantity_returns_400()
+    {
+        var productId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Products.Add(new Product(productId, "Widget", 9.99m, 10));
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
+            lines = new[] { new { productId, quantity = -50 } },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var product = await verifyDb.Products.FindAsync(productId);
+        Assert.Equal(10, product!.StockQuantity);
+    }
+
+    [Fact]
+    public async Task Create_order_with_empty_lines_returns_400()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
+            lines = Array.Empty<object>(),
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_order_with_null_lines_returns_400_not_500()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
+            lines = (object?)null,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetAll_with_invalid_status_returns_400_not_500()
+    {
+        var client = _factory.CreateClient();
+        var token = await LoginAsAdminAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.GetAsync("/api/orders?status=bogus");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateStatus_with_invalid_status_returns_400_not_500()
+    {
+        var productId = Guid.NewGuid();
+        Guid orderId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Products.Add(new Product(productId, "Widget", 9.99m, 10));
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        var createResponse = await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
+            lines = new[] { new { productId, quantity = 1 } },
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<OrderDto>();
+        orderId = created!.Id;
+
+        var token = await LoginAsAdminAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.PatchAsJsonAsync($"/api/orders/{orderId}/status", new { status = "bogus" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     private async Task<string> LoginAsAdminAsync(HttpClient client)
     {
-        const string username = "orders-test-admin";
+        var username = $"orders-test-admin-{Guid.NewGuid()}";
         const string password = "correct-password";
 
         using (var scope = _factory.Services.CreateScope())

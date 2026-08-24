@@ -9,15 +9,25 @@ public class CreateOrderHandler
 {
     private readonly IProductRepository _products;
     private readonly IOrderRepository _orders;
+    private readonly ICustomerRepository _customers;
 
-    public CreateOrderHandler(IProductRepository products, IOrderRepository orders)
+    public CreateOrderHandler(IProductRepository products, IOrderRepository orders, ICustomerRepository customers)
     {
         _products = products;
         _orders = orders;
+        _customers = customers;
     }
 
     public async Task<OrderDto> HandleAsync(CreateOrderRequest request)
     {
+        var customer = await _customers.GetByEmailAsync(request.CustomerEmail);
+        if (customer is null)
+        {
+            customer = new Customer(Guid.NewGuid(), request.CustomerName, request.CustomerEmail);
+            await _customers.AddAsync(customer);
+            await _customers.SaveChangesAsync();
+        }
+
         var resolvedProducts = new List<(Product Product, int Quantity)>();
 
         // Group request lines by ProductId and aggregate quantities
@@ -40,7 +50,7 @@ public class CreateOrderHandler
         var orderItems = resolvedProducts
             .Select(rp => new OrderItem(rp.Product.Id, rp.Quantity, rp.Product.Price))
             .ToList();
-        var order = Order.Create(request.CustomerId, orderItems);
+        var order = Order.Create(customer.Id, orderItems);
 
         foreach (var (product, quantity) in resolvedProducts)
         {
