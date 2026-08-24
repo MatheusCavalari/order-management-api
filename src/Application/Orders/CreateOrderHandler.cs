@@ -20,15 +20,21 @@ public class CreateOrderHandler
     {
         var resolvedProducts = new List<(Product Product, int Quantity)>();
 
-        foreach (var line in request.Lines)
+        // Group request lines by ProductId and aggregate quantities
+        var linesByProduct = request.Lines
+            .GroupBy(line => line.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(line => line.Quantity));
+
+        // Validate aggregated quantities BEFORE any stock decrements
+        foreach (var (productId, aggregatedQuantity) in linesByProduct)
         {
-            var product = await _products.GetByIdAsync(line.ProductId)
-                ?? throw new InsufficientStockException(line.ProductId, line.Quantity, 0);
-            if (line.Quantity > product.StockQuantity)
+            var product = await _products.GetByIdAsync(productId)
+                ?? throw new InsufficientStockException(productId, aggregatedQuantity, 0);
+            if (aggregatedQuantity > product.StockQuantity)
             {
-                throw new InsufficientStockException(line.ProductId, line.Quantity, product.StockQuantity);
+                throw new InsufficientStockException(productId, aggregatedQuantity, product.StockQuantity);
             }
-            resolvedProducts.Add((product, line.Quantity));
+            resolvedProducts.Add((product, aggregatedQuantity));
         }
 
         var orderItems = resolvedProducts
