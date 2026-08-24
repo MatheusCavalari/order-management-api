@@ -21,6 +21,16 @@ public class OrdersController : ControllerBase
         return Ok(await handler.HandleAsync(filter));
     }
 
+    [HttpGet("{id}")]
+    [Authorize]
+    public async Task<ActionResult<OrderDto>> GetById(
+        Guid id,
+        [FromServices] GetOrderByIdHandler handler)
+    {
+        var result = await handler.HandleAsync(id);
+        return result is null ? NotFound() : Ok(result);
+    }
+
     [HttpPost]
     [AllowAnonymous]
     public async Task<ActionResult<OrderDto>> Create(
