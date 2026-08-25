@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Admin</h1>
+
+  <section id="login-section">
+    <label>Username <input id="username" /></label>
+    <label>Password <input id="password" type="password" /></label>
+    <button id="login-button">Log in</button>
+    <p id="login-result"></p>
+  </section>
+
+  <section id="admin-section" hidden>
+    <h2>Products</h2>
+    <div id="products"></div>
+    <h3>New product</h3>
+    <label>Name <input id="new-product-name" /></label>
+    <label>Price <input id="new-product-price" type="number" step="0.01" /></label>
+    <label>Stock <input id="new-product-stock" type="number" /></label>
+    <button id="create-product-button">Create product</button>
+
+    <h2>Orders</h2>
+    <div id="orders"></div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
