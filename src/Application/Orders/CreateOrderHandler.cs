@@ -82,8 +82,16 @@ public class CreateOrderHandler
                     order.Status.ToString(),
                     order.Items.Select(i => new OrderItemDto(i.ProductId, i.Quantity, i.UnitPriceAtOrderTime)).ToList());
             }
-            catch (DbUpdateConcurrencyException ex) when (attempt < MaxRetries - 1)
+            catch (DbUpdateConcurrencyException ex)
             {
+                if (attempt == MaxRetries - 1)
+                {
+                    // Exhausted all retries: repeated concurrency conflicts on the same
+                    // product(s) almost always mean stock genuinely ran out to a faster
+                    // concurrent request.
+                    throw new InsufficientStockException(Guid.Empty, 0, 0);
+                }
+
                 // Another request modified a product's stock (RowVersion mismatch) between our
                 // read and write. Reload the conflicting entries so the change tracker picks up
                 // the current RowVersion and StockQuantity from the database. This also discards
@@ -97,8 +105,8 @@ public class CreateOrderHandler
             }
         }
 
-        // Exhausted all retries: repeated concurrency conflicts on the same product(s) almost
-        // always mean stock genuinely ran out to a faster concurrent request.
+        // Unreachable: the loop above always either returns on success or throws on the
+        // final attempt. Kept only to satisfy the compiler's control-flow analysis.
         throw new InsufficientStockException(Guid.Empty, 0, 0);
     }
 }
