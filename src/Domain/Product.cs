@@ -8,6 +8,7 @@ public class Product
     public string Name { get; private set; }
     public decimal Price { get; private set; }
     public int StockQuantity { get; private set; }
+    public byte[]? RowVersion { get; set; }
 
     public Product(Guid id, string name, decimal price, int stockQuantity)
     {
