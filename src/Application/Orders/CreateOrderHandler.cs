@@ -82,31 +82,34 @@ public class CreateOrderHandler
                     order.Status.ToString(),
                     order.Items.Select(i => new OrderItemDto(i.ProductId, i.Quantity, i.UnitPriceAtOrderTime)).ToList());
             }
-            catch (DbUpdateConcurrencyException ex)
+            catch (DbUpdateConcurrencyException)
             {
                 if (attempt == MaxRetries - 1)
                 {
-                    // Exhausted all retries: repeated concurrency conflicts on the same
-                    // product(s) almost always mean stock genuinely ran out to a faster
-                    // concurrent request.
-                    throw new InsufficientStockException(Guid.Empty, 0, 0);
+                    // Exhausted all retries: repeated concurrency conflicts prevented a clean
+                    // write. This does not necessarily mean stock is exhausted -- it means we
+                    // could not confirm either way within the retry budget -- so we throw a
+                    // dedicated exception instead of a fabricated InsufficientStockException.
+                    throw new OrderConcurrencyException();
                 }
 
                 // Another request modified a product's stock (RowVersion mismatch) between our
-                // read and write. Reload the conflicting entries so the change tracker picks up
-                // the current RowVersion and StockQuantity from the database. This also discards
-                // our failed in-memory DecreaseStock call, so the next attempt starts from a
-                // clean, up-to-date Product instance instead of double-decrementing stock on the
-                // entity that EF's identity map would otherwise keep serving from cache.
-                foreach (var entry in ex.Entries)
-                {
-                    await entry.ReloadAsync();
-                }
+                // read and write. Reload EVERY tracked, modified Product -- not just the entries
+                // reported on ex.Entries -- so the change tracker picks up the current RowVersion
+                // and StockQuantity from the database for all of them. DbUpdateConcurrencyException
+                // .Entries only contains the entries that actually failed the concurrency check; for
+                // a multi-product order where one product conflicts, any OTHER product already
+                // decremented in this attempt stays in the tracker as "Modified" with its
+                // already-decremented in-memory value untouched. Reloading only ex.Entries would
+                // leave that other product's stale, already-decremented instance in place, and the
+                // retry's GetByIdAsync would hand back that same tracked instance -- causing
+                // DecreaseStock to run on it a second time and double-decrement its stock.
+                await _products.ReloadModifiedAsync();
             }
         }
 
         // Unreachable: the loop above always either returns on success or throws on the
         // final attempt. Kept only to satisfy the compiler's control-flow analysis.
-        throw new InsufficientStockException(Guid.Empty, 0, 0);
+        throw new OrderConcurrencyException();
     }
 }
