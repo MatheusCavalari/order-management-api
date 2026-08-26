@@ -4,7 +4,12 @@ using Application.Orders;
 using Application.Products;
 using Application.Repositories;
 using Api.Middleware;
+using Application.Events;
+using Application.Notifications;
+using Domain.Events;
 using Infrastructure.Auth;
+using Infrastructure.Events;
+using Infrastructure.Notifications;
 using Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +30,10 @@ builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 builder.Services.AddScoped<IAdminUserRepository, AdminUserRepository>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<ITokenGenerator, TokenGenerator>();
+
+builder.Services.AddScoped<IDomainEventDispatcher, InProcessDomainEventDispatcher>();
+builder.Services.AddScoped<INotificationSender, ConsoleNotificationSender>();
+builder.Services.AddScoped<IDomainEventHandler<OrderStatusChangedEvent>, OrderStatusChangedNotificationHandler>();
 
 builder.Services.AddScoped<GetProductsHandler>();
 builder.Services.AddScoped<CreateProductHandler>();

@@ -188,6 +188,46 @@ public class OrdersEndpointTests : IClassFixture<TestApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task UpdateStatus_valid_transition_returns_200_even_with_the_notification_pipeline_wired_up()
+    {
+        var productId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Products.Add(new Product(productId, "Widget", 9.99m, 10));
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        var createResponse = await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerName = "Jane Doe",
+            customerEmail = "jane@example.com",
+            lines = new[] { new { productId, quantity = 1 } },
+        });
+        var created = await createResponse.Content.ReadFromJsonAsync<OrderDto>();
+        var orderId = created!.Id;
+
+        var token = await LoginAsAdminAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var response = await client.PatchAsJsonAsync($"/api/orders/{orderId}/status", new { status = "Paid" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var order = await response.Content.ReadFromJsonAsync<OrderDto>();
+        Assert.Equal("Paid", order!.Status);
+
+        // Prove the notification pipeline actually fired end-to-end, not just that the endpoint
+        // returned 200. Filter by orderId since CapturingNotificationSender is a singleton shared
+        // across every test in this fixture.
+        var sender = (CapturingNotificationSender)_factory.Services.GetRequiredService<Application.Notifications.INotificationSender>();
+        var notification = Assert.Single(sender.Sent.Where(n => n.OrderId == orderId));
+        Assert.Equal("jane@example.com", notification.CustomerEmail);
+        Assert.Equal(OrderStatus.Pending, notification.OldStatus);
+        Assert.Equal(OrderStatus.Paid, notification.NewStatus);
+    }
+
     private async Task<string> LoginAsAdminAsync(HttpClient client)
     {
         var username = $"orders-test-admin-{Guid.NewGuid()}";
