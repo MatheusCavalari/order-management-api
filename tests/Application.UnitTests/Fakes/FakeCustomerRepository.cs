@@ -14,6 +14,9 @@ public class FakeCustomerRepository : ICustomerRepository
     public Task<Customer?> GetByEmailAsync(string email) =>
         Task.FromResult(_customers.Values.FirstOrDefault(c => c.Email == email));
 
+    public Task<Customer?> GetByIdAsync(Guid id) =>
+        Task.FromResult(_customers.GetValueOrDefault(id));
+
     public Task AddAsync(Customer customer)
     {
         _customers[customer.Id] = customer;
