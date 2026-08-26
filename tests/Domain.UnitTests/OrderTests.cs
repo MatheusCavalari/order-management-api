@@ -1,4 +1,5 @@
 using Domain;
+using Domain.Events;
 using Domain.Exceptions;
 using Xunit;
 
@@ -77,5 +78,56 @@ public class OrderTests
         order.AdvanceTo(OrderStatus.Shipped);
 
         Assert.Throws<InvalidOrderStatusTransitionException>(() => order.Cancel());
+    }
+
+    [Fact]
+    public void AdvanceTo_valid_transition_raises_OrderStatusChangedEvent()
+    {
+        var customerId = Guid.NewGuid();
+        var order = Order.Create(customerId, new[] { Item() });
+
+        order.AdvanceTo(OrderStatus.Paid);
+
+        var events = order.PullDomainEvents();
+        var raised = Assert.Single(events);
+        var statusChanged = Assert.IsType<OrderStatusChangedEvent>(raised);
+        Assert.Equal(order.Id, statusChanged.OrderId);
+        Assert.Equal(customerId, statusChanged.CustomerId);
+        Assert.Equal(OrderStatus.Pending, statusChanged.OldStatus);
+        Assert.Equal(OrderStatus.Paid, statusChanged.NewStatus);
+    }
+
+    [Fact]
+    public void Cancel_raises_OrderStatusChangedEvent_with_Cancelled_as_new_status()
+    {
+        var order = Order.Create(Guid.NewGuid(), new[] { Item() });
+
+        order.Cancel();
+
+        var events = order.PullDomainEvents();
+        var statusChanged = Assert.IsType<OrderStatusChangedEvent>(Assert.Single(events));
+        Assert.Equal(OrderStatus.Cancelled, statusChanged.NewStatus);
+    }
+
+    [Fact]
+    public void AdvanceTo_invalid_transition_raises_no_event()
+    {
+        var order = Order.Create(Guid.NewGuid(), new[] { Item() });
+
+        Assert.Throws<InvalidOrderStatusTransitionException>(() => order.AdvanceTo(OrderStatus.Shipped));
+
+        Assert.Empty(order.PullDomainEvents());
+    }
+
+    [Fact]
+    public void PullDomainEvents_clears_the_list_after_returning_it()
+    {
+        var order = Order.Create(Guid.NewGuid(), new[] { Item() });
+        order.AdvanceTo(OrderStatus.Paid);
+
+        order.PullDomainEvents();
+        var secondPull = order.PullDomainEvents();
+
+        Assert.Empty(secondPull);
     }
 }

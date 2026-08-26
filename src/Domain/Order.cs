@@ -1,3 +1,4 @@
+using Domain.Events;
 using Domain.Exceptions;
 
 namespace Domain;
@@ -13,6 +14,7 @@ public class Order
     };
 
     private readonly List<OrderItem> _items = new();
+    private readonly List<IDomainEvent> _domainEvents = new();
 
     public Guid Id { get; private set; }
     public Guid CustomerId { get; private set; }
@@ -40,11 +42,20 @@ public class Order
             throw new InvalidOrderStatusTransitionException(Status, newStatus);
         }
 
+        var oldStatus = Status;
         Status = newStatus;
+        _domainEvents.Add(new OrderStatusChangedEvent(Id, CustomerId, oldStatus, newStatus));
     }
 
     public void Cancel()
     {
         AdvanceTo(OrderStatus.Cancelled);
+    }
+
+    public IReadOnlyList<IDomainEvent> PullDomainEvents()
+    {
+        var events = _domainEvents.ToList();
+        _domainEvents.Clear();
+        return events;
     }
 }
