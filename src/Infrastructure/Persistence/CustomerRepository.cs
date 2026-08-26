@@ -12,6 +12,9 @@ public class CustomerRepository : ICustomerRepository
     public Task<Customer?> GetByEmailAsync(string email) =>
         _db.Customers.FirstOrDefaultAsync(c => c.Email == email);
 
+    public Task<Customer?> GetByIdAsync(Guid id) =>
+        _db.Customers.FirstOrDefaultAsync(c => c.Id == id);
+
     public async Task AddAsync(Customer customer) =>
         await _db.Customers.AddAsync(customer);
 
