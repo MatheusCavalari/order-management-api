@@ -142,4 +142,43 @@ public class CreateOrderHandlerTests
         Assert.Equal(5, (await products.GetByIdAsync(productId))!.StockQuantity);
         Assert.Empty(orders.Orders);
     }
+
+    [Fact]
+    public async Task HandleAsync_retries_once_on_concurrency_conflict_and_succeeds()
+    {
+        var productId = Guid.NewGuid();
+        var products = new FakeProductRepository();
+        products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
+        products.FailNextSaveChangesWithConcurrencyException(1);
+        var orders = new FakeOrderRepository();
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
+
+        var result = await handler.HandleAsync(new CreateOrderRequest(
+            "Jane Doe",
+            "jane@example.com",
+            new[] { new CreateOrderLineRequest(productId, 3) }));
+
+        Assert.Equal("Pending", result.Status);
+        Assert.Equal(2, (await products.GetByIdAsync(productId))!.StockQuantity);
+        Assert.Single(orders.Orders);
+    }
+
+    [Fact]
+    public async Task HandleAsync_throws_after_three_failed_attempts_due_to_concurrency_conflicts()
+    {
+        var productId = Guid.NewGuid();
+        var products = new FakeProductRepository();
+        products.Seed(new Product(productId, "Widget", 10.00m, stockQuantity: 5));
+        products.FailNextSaveChangesWithConcurrencyException(3);
+        var orders = new FakeOrderRepository();
+        var customers = new FakeCustomerRepository();
+        var handler = new CreateOrderHandler(products, orders, customers);
+
+        await Assert.ThrowsAsync<OrderConcurrencyException>(() => handler.HandleAsync(
+            new CreateOrderRequest(
+                "Jane Doe",
+                "jane@example.com",
+                new[] { new CreateOrderLineRequest(productId, 3) })));
+    }
 }

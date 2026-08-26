@@ -97,6 +97,15 @@ CI (GitHub Actions) runs the full suite on every push and pull request.
 - **xUnit** — unit and integration tests
 - **Vanilla JavaScript** — both frontends, no framework, no build step
 
+## Concurrency Control
+
+Stock quantities are protected against concurrent order placement using optimistic concurrency control:
+
+- **RowVersion:** Each `Product` entity has an EF Core concurrency token (`RowVersion`/`byte[]`) that EF Core increments on every save.
+- **Conflict Detection:** When multiple orders attempt to decrement the same product's stock simultaneously, EF Core detects that the `RowVersion` has changed since the order handler last read the product, and throws `DbUpdateConcurrencyException`.
+- **Bounded Retry:** `CreateOrderHandler` catches the exception and retries the entire order-placement operation up to 3 times, allowing transient conflicts to resolve as one order completes before the next reads the product.
+- **Result:** Two concurrent orders for the same product are serialized naturally by SQLite's locking; if stock is exhausted, the second order fails with a 422 Unprocessable Entity response.
+
 ## License
 
 [MIT](LICENSE)

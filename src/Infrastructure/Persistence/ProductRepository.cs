@@ -28,4 +28,13 @@ public class ProductRepository : IProductRepository
     }
 
     public Task SaveChangesAsync() => _db.SaveChangesAsync();
+
+    public Task ReloadModifiedAsync()
+    {
+        var modifiedEntries = _db.ChangeTracker.Entries<Product>()
+            .Where(e => e.State == EntityState.Modified)
+            .ToList();
+
+        return Task.WhenAll(modifiedEntries.Select(e => e.ReloadAsync()));
+    }
 }
