@@ -217,6 +217,15 @@ public class OrdersEndpointTests : IClassFixture<TestApiFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var order = await response.Content.ReadFromJsonAsync<OrderDto>();
         Assert.Equal("Paid", order!.Status);
+
+        // Prove the notification pipeline actually fired end-to-end, not just that the endpoint
+        // returned 200. Filter by orderId since CapturingNotificationSender is a singleton shared
+        // across every test in this fixture.
+        var sender = (CapturingNotificationSender)_factory.Services.GetRequiredService<Application.Notifications.INotificationSender>();
+        var notification = Assert.Single(sender.Sent.Where(n => n.OrderId == orderId));
+        Assert.Equal("jane@example.com", notification.CustomerEmail);
+        Assert.Equal(OrderStatus.Pending, notification.OldStatus);
+        Assert.Equal(OrderStatus.Paid, notification.NewStatus);
     }
 
     private async Task<string> LoginAsAdminAsync(HttpClient client)

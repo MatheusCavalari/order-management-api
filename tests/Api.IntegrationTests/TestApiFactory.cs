@@ -1,3 +1,4 @@
+using Application.Notifications;
 using Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,6 +21,10 @@ public class TestApiFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlite(_connectionKeeper.Connection));
+
+            var notificationSenderDescriptor = services.Single(d => d.ServiceType == typeof(INotificationSender));
+            services.Remove(notificationSenderDescriptor);
+            services.AddSingleton<INotificationSender, CapturingNotificationSender>();
 
             using var scope = services.BuildServiceProvider().CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

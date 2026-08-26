@@ -20,8 +20,19 @@ public class InProcessDomainEventDispatcher : IDomainEventDispatcher
     {
         foreach (var domainEvent in events)
         {
-            var handlerType = typeof(IDomainEventHandler<>).MakeGenericType(domainEvent.GetType());
-            var handlers = (IEnumerable<object>)_serviceProvider.GetServices(handlerType);
+            Type handlerType;
+            IEnumerable<object> handlers;
+
+            try
+            {
+                handlerType = typeof(IDomainEventHandler<>).MakeGenericType(domainEvent.GetType());
+                handlers = (IEnumerable<object>)_serviceProvider.GetServices(handlerType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to resolve domain event handlers for event {EventType}", domainEvent.GetType().Name);
+                continue;
+            }
 
             foreach (var handler in handlers)
             {

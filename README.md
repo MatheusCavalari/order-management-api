@@ -33,6 +33,15 @@ a single middleware and translated into an [RFC 7807](https://www.rfc-editor.org
 `ProblemDetails` response (`422` for business-rule violations, `400` for
 malformed requests).
 
+Order status transitions raise a domain event (`OrderStatusChangedEvent`) on
+the `Order` aggregate. After the status change is persisted,
+`UpdateOrderStatusHandler` dispatches the accumulated events through a
+hand-rolled, DI-resolved `IDomainEventDispatcher` (no MediatR or other
+library) to any registered `IDomainEventHandler<TEvent>` implementations.
+The one handler currently registered resolves the customer and logs a
+console notification of the status change. A handler failure is logged and
+never fails the underlying status update.
+
 ## API
 
 | Method | Route | Auth | Description |
